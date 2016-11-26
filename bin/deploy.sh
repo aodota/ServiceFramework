@@ -2,158 +2,156 @@
 #加载环境变量
 source /etc/profile
 
-#一些有用的函数
-function s_mkdir
-{
-  local directory=${1-"s_temp"}
-  if [ ! -d $directory ];then
-   mkdir -p $directory
-   echo "mkdir => [$direcotry]"
-  else
-   echo "already exsits => [$direcotry]"
-  fi
-}
-
-valid_status()
-{
-	if [ $1 -ne 0 ];then
-		echo "$2 error !!! exit....."
-		exit $W_EXIT_STATUS
-	fi
-}
-
-#默认我们设置为开发环境 p env=p 为生产环境  env=d 为开发环境
-env=${3-"d"}
-build_dir=${2-"build"}
-
-
-
-
-#虚拟机参数
-min_heap_size="1300m"
-max_heap_size="1300m"
-
-#生产环境设置
-#if [ $env == "p" ];then
-#	min_heap_size="3300m"
-#	max_heap_size="3300m"x
-#fi
-
-#异常退出code
-W_EXIT_STATUS=65
-
 # 执行该脚本时 有可能是符号链接 我们要找到它的实际位置
-SCRIPT="$0"
-while [ -h "$SCRIPT" ] ; do
-  ls=`ls -ld "$SCRIPT"`
-  # Drop everything prior to ->
-  link=`expr "$ls" : '.*-> \(.*\)$'`
-  if expr "$link" : '/.*' > /dev/null; then
-    SCRIPT="$link"
-  else
-    SCRIPT=`dirname "$SCRIPT"`/"$link"
-  fi
-done
+ SCRIPT=$0
+ while [ -h "$SCRIPT" ] ; do
+   ls=`ls -ld "$SCRIPT"`
+   # Drop everything prior to ->
+   link=`expr "$ls" : '.*-> \(.*\)$'`
+   if expr "$link" : '/.*' > /dev/null; then
+     SCRIPT="$link"
+   else
+     SCRIPT=`dirname "$SCRIPT"`/"$link"
+   fi
+ done
 
-#找到项目根目录
-S_HOME=`dirname "$SCRIPT"`/..
-S_HOME=`cd $S_HOME; pwd`
+CONDITION_FAIL=1
+SUCCESS=0
 
-DEPLOY_ROOT="$S_HOME/deploy"
-DEPLOY_TO="$S_HOME/deploy/$build_dir"
-DEPLOY_CURRENT="$S_HOME/current"
+PROJECT_NAME=${2:-'search_system_v2'}
 
-s_mkdir $DEPLOY_ROOT
-s_mkdir $DEPLOY_TO
+S_HOME=$(cd `dirname "$SCRIPT"`/..;pwd)
+S_CONFIGURATION_HOME=/data/configurations/${PROJECT_NAME}/config
+S_TARGET=${S_HOME}/release
+S_DEPLOY=${S_HOME}/deploy
 
+source ${S_HOME}/bin/config
 
+echo "部署变量"
+echo "S_HOME=${S_HOME}"
+echo "S_CONFIGURATION_HOME=${S_CONFIGURATION_HOME}"
+echo "S_TARGET=${S_TARGET}"
+echo "S_DEPLOY=${S_DEPLOY}"
+echo "s_main_class=${s_main_class}"
+echo "s_java_options=${s_java_options}"
+echo "application_file=${application_file}"
 
-#进入根目录
-cd $S_HOME
-echo "ROOT Directory => $S_HOME"
+check_dir_empty(){
+   [ "$(ls -A $1)" ] && return ${CONDITION_FAIL} || return ${SUCCESS}
+}
 
+check_install(){
+  echo "检查 配置文件，依赖包，已编译的class文件...."
+  [ ! -f ${S_CONFIGURATION_HOME}/${application_file} ] && echo "$S_CONFIGURATION_HOME/${application_file} 文件不存在" && return ${CONDITION_FAIL}
+  check_dir_empty ${S_TARGET}  && echo "$S_TARGET 文件夹不存在" && return
+  check_dir_empty ${S_TARGET}/dependency && echo "$S_TARGET/dependency => 没有检查到依赖包" && return ${CONDITION_FAIL}
+  check_dir_empty ${S_TARGET}/classes && echo "$S_TARGET/classes => 没有检查到项目依赖" && return ${CONDITION_FAIL}
+  echo "检查没有问题 继续..."
+  return ${SUCCESS}
+}
 
-#获取jar列表
-classpath=.
-for jarfile in `ls lib`
-do
-   classpath=$classpath:lib/$jarfile
-done
+write_deploy_version(){
+   echo ${1} > ${S_HOME}/deploy_version
+}
 
+fetch_deploy_version(){
+   echo `cat ${S_HOME}/deploy_version`
+}
 
-#获取所有待编译的java文件
-for source in `find src -type f -iname "*.java"`
-do
-   sourcefiles=$sourcefiles" "$source
-done
+clean(){
+  echo "清理${S_DEPLOY}目录"
+  rm -rf ${S_DEPLOY}
+  echo "删除运行部署版本记录"
+  write_deploy_version
+}
+deploy(){
 
+   ! check_install && return  ${CONDITION_FAIL}
+   local S_DEPLOY_VERSION_TIME=`date +%Y%m%d%H%M%S`
+   write_deploy_version ${S_DEPLOY_VERSION_TIME}
 
+   [ ! -d ${S_DEPLOY} ] && mkdir -p ${S_DEPLOY}
+   [ ! -d ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME} ] && mkdir -p ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}
+
+   mkdir ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/logs
+   mkdir ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/config
+
+   cp -r ${S_TARGET}/dependency  ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/
+   cp -r ${S_TARGET}/classes  ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/
+
+   cp -r ${S_HOME}/dictionaries ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/dictionaries
+   cp -r ${S_HOME}/template ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/template
+
+   rm ${S_HOME}/current
+   ln -s ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}  ${S_HOME}/current
+   ln -s ${S_CONFIGURATION_HOME}/${application_file} ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/config/application.yml
+   ln -s ${S_CONFIGURATION_HOME}/strategy.v2.json ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/config/strategy.v2.json
+   ln -s ${S_CONFIGURATION_HOME}/logging.yml ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/config/logging.yml
+
+   return ${SUCCESS}
+}
 
 start()
 {
-  echo "staring system [`cd $DEPLOY_CURRENT;pwd -P`]....."
-  cd $DEPLOY_CURRENT
-  nohup java -Xms$min_heap_size -Xmx$max_heap_size -XX:PermSize=128m -Xloggc:gc.log -XX:+PrintGCTimeStamps -XX:-PrintGCDetails -cp $classpath net.csdn.bootstrap.Application  > application.log  &
+  if [ -z `fetch_deploy_version` ];then
+    echo "还没有部署过，进入部署过程"
+    deploy
+    [ $? -ne 0 ] && echo "部署失败，无法启动应用" && return
+  fi
+
+  local S_DEPLOY_VERSION_TIME=`fetch_deploy_version`
+  cd ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}
+  rm ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/config/application.yml
+  ln -s ${S_CONFIGURATION_HOME}/${application_file} ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}/config/application.yml
+
+  local PIDS=`cat application.pid`
+  if [ -n "$PIDS" ]; then
+    echo "ERROR: already started!"
+    echo "PID: $PIDS"
+    exit 1
+  fi
+
+  echo -e "Starting ...\c"
+  echo "java ${s_java_options} -Xloggc:gc.log -XX:+PrintGCTimeStamps -XX:-PrintGCDetails -cp dependency/*:classes ${s_main_class}"
+  nohup java ${s_java_options} -Xloggc:gc.log -XX:+PrintGCTimeStamps -XX:-PrintGCDetails -cp dependency/*:classes ${s_main_class} > /dev/null 2>&1 &
   echo $! > application.pid
+  echo "进程号为: `cat application.pid`"
+
+#  local COUNT=0
+#  while [ $COUNT -lt 1 ]; do
+#    echo -e ".\c"
+#    sleep 1
+#    if [ -n "$SERVER_PORT" ]; then
+#        if [ "$SERVER_PROTOCOL" == "dubbo" ]; then
+#    	    COUNT=`echo status | nc -i 1 127.0.0.1 $SERVER_PORT | grep -c OK`
+#        else
+#            COUNT=`netstat -an | grep $SERVER_PORT | wc -l`
+#        fi
+#    else
+#    	COUNT=`ps -f | grep java | grep "$DEPLOY_DIR" | awk '{print $2}' | wc -l`
+#    fi
+#    if [ $COUNT -gt 0 ]; then
+#        break
+#    fi
+#  done
+#  echo "OK!"
 }
 stop()
 {
-	if [ -d $DEPLOY_CURRENT ];then
-		 echo "stoping system [`cd $DEPLOY_CURRENT;pwd -P`]....."
-		 cd $DEPLOY_CURRENT
-		 kill  `cat application.pid`
-    fi
+    local S_DEPLOY_VERSION_TIME=`fetch_deploy_version`
+    cd ${S_DEPLOY}/${S_DEPLOY_VERSION_TIME}
+    local pid=`cat application.pid`
+    echo "获取进程pid: ${pid}"
+    [ ! -z ${pid} ] && kill -15 ${pid} || echo "无法获取pid"
+    sleep 3
 }
 
 rollback()
 {
-  stop
-  
-  echo "rm -rf $DEPLOY_CURRENT"
-  rm -rf $DEPLOY_CURRENT
-  
-  echo "rm -rf $DEPLOY_TO"
-  rm -rf $DEPLOY_TO
-  
-  local preview_version=` ls $DEPLOY_ROOT |sort -r|head -n1`
-  ln -s  $DEPLOY_ROOT/$preview_version $S_HOME/current
- 
-  start 
+  local versions=($(ls ${S_DEPLOY} |sort -r|head |tr "\n" " "))
+  write_deploy_version ${versions[1]}
 }
 
-
-deploy()
-{	
-    cd $S_HOME
-	
-	echo "copy files to [$DEPLOY_TO]"
-	for file in `ls $S_HOME`
-	do
-	    if [  $file != 'deploy' -a $file != 'current' ];then
-	    echo "   coping $file ....."
-	    cp -r $file $DEPLOY_TO
-		valid_status $? "copy $file to $DEPLOY_TO "
-	    fi
-	done
-
-	#开始编译啦
-	javac -g -cp $classpath -d $DEPLOY_TO -encoding UTF-8 $sourcefiles
-	
-	#编译错误的退出脚本
-	if [ $? -ne 0 ];then
-		echo 'compile error !!! exit.....'
-		exit $W_EXIT_STATUS
-	fi
-	cp -r "$S_HOME/src/META-INF" $DEPLOY_TO	
-}
-
-migrate_version()
-{
-	stop	
-	rm -rf $DEPLOY_CURRENT
-	ln -s  $DEPLOY_TO $DEPLOY_CURRENT 
-    start
-}
 
 case $1 in
 "restart")
@@ -175,12 +173,14 @@ case $1 in
    rollback
 ;;
 
-"migrate_version")
-   migrate_version
+"clean")
+   clean
 ;;
-*) echo "only accept params start|stop|restart|deploy" ;;
+
+*) echo "only accept params start|stop|restart|deploy|rollback|clean" ;;
 esac
 
+exit 0
 
 
 

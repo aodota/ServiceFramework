@@ -1,0 +1,5 @@
+PROJECT_NAME=#填写你的项目名称，英文
+s_main_class=#启动类，比如 bootstrap.App
+s_java_options="-Xms1300m -Xmx1300m -XX:PermSize=128m -XX:-HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/dump.hprof"
+S_CONFIGURATION_HOME=#配置文件所在目录
+application_file=application.yml

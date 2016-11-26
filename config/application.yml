@@ -13,56 +13,85 @@ development:
            database: wow
            username: root
            password: csdn.net
-           disable: false
+           disable: true
         mongodb:
            host: 127.0.0.1
            port: 27017
-           database: csdn_data_center
-           disable: false
+           database: wow
+           disable: true
         redis:
             host: 127.0.0.1
             port: 6379
             disable: true
-
+test:
+    datasources:
+            mysql:
+               host: 127.0.0.1
+               port: 3306
+               database: wow
+               username: root
+               password: root
+               disable: true
+            mongodb:
+               host: 127.0.0.1
+               port: 27017
+               database: wow
+               disable: false
+            redis:
+                host: 127.0.0.1
+                port: 6379
+                disable: true
 production:
     datasources:
-        mysql:
-           host: 127.0.0.1
-           port: 3306
-           database: wow
-           username: root
-           password: csdn.net
-        mongodb:
-           host: 127.0.0.1
-           port: 27017
-           database: csdn_data_center
-        redis:
-            host: 127.0.0.1
-            port: 6379
+            mysql:
+               host: 127.0.0.1
+               port: 3306
+               database: wow
+               username: root
+               password: root
+               disable: false
+            mongodb:
+               host: 127.0.0.1
+               port: 27017
+               database: wow
+               disable: false
+            redis:
+                host: 127.0.0.1
+                port: 6379
+                disable: true
 
-orm:
-    show_sql: true
-    pool_min_size: 5
-    pool_max_size: 10
-    timeout: 300
-    max_statements: 50
-    idle_test_period: 3000
 ###############application config##################
 #'model' for relational database  like MySQL
 #'document' for NoSQL database model configuration,  MongoDB
 
 application:
-    controller: com.example.controller
+    controller: com.example.controller.http
     model:      com.example.model
     document:   com.example.document
     service:    com.example.service
     util:       com.example.util
-    test:       test.com.example.document
-
-
+    test:       test.com.example
+    template:
+        engine:
+           enable: false
+    api:
+        qps:
+           enable: true
 ###############http config##################
 http:
-    port: 9500
+    port: 9002
+    disable: false
+
+#thrift:
+#    disable: true
+#    services:
+#        net_csdn_controller_thrift_impl_CBayesianQueryServiceImpl:
+#           port: 9001
+#           min_threads: 100
+#           max_threads: 1000
+#
+#    servers:
+#        spam_bayes: ["127.0.0.1:9001"]
 
 
 
@@ -89,3 +118,12 @@ mongo_validator:
 
 ################ 数据库类型映射 ####################
 type_mapping:  net.csdn.jpa.type.impl.MysqlType
+
+qps:
+   /say/hello: 10
+
+qpslimit:
+   enable: true
+dubbo:
+   disable: true
+   server: true

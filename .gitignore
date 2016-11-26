@@ -2,7 +2,9 @@
 /.idea
 /dictionaries
 /logs
+/target
 /out
 /build
+release.properties
 /bin/build_dependecy.sh
 /config/application.yml
